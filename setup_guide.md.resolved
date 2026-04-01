@@ -1,0 +1,34 @@
+# Google Sheets API Setup Guide
+
+To get your free Google Sheets integration working, follow these exact steps:
+
+## 1. Create a Google Cloud Project & Enable the API
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project (e.g., "Website Contact Form").
+3. Once the project is created, click the top search bar and search for **"Google Sheets API"**.
+4. Click **Enable** to turn it on for your project.
+
+## 2. Create a Service Account
+1. From the Cloud Console menu, go to **IAM & Admin > Service Accounts**.
+2. Click **Create Service Account** at the top.
+3. Name it something like "sheets-updater". Click **Create and Continue**, then **Done**.
+4. You will see an email address generated for this account (e.g., `sheets-updater@your-project-id.iam.gserviceaccount.com`). **Copy this email address.** You will need it in step 3.
+
+## 3. Generate the Private Key
+1. Click on the newly created Service Account.
+2. Go to the **Keys** tab at the top.
+3. Click **Add Key > Create new key**.
+4. Choose **JSON** and click Create. The file will download to your computer.
+5. Open the downloaded JSON file. You need two pieces from here:
+   - `client_email`: This is the email you copied earlier. Paste this into your `.env` file as `GOOGLE_SERVICE_ACCOUNT_EMAIL`.
+   - `private_key`: This is a long string that starts with `-----BEGIN PRIVATE KEY-----`. Copy the **entire** string, including the `\n` characters, and paste it tightly inside quotes for your `GOOGLE_PRIVATE_KEY` in your `.env` file.
+
+## 4. Prepare Your Google Sheet
+1. Open Google Sheets and create a new spreadsheet (or use an existing one).
+2. Look at the URL in your browser. It will look like this: `https://docs.google.com/spreadsheets/d/1BxiMVs0XcXd5.../edit#gid=0`. 
+   - The long random string (`1BxiMVs0XcXd5...`) is your **Spreadsheet ID**. Paste this as `GOOGLE_SHEET_ID` in your `.env` file.
+3. In the top right of your Google Sheet, click the **Share** button.
+4. **Important**: Paste the `client_email` (from Step 2.4) into the share box and give it **Editor** access. (This allows the API to write to it).
+
+## 5. You're Done!
+Once your `.env` file contains those three keys, the API will automatically append a new row containing the Timestamp and the form fields every time a user submits the form!

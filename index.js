@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -106,7 +107,61 @@ app.post('/api/contact', async (req, res) => {
     // Send the email
     await transporter.sendMail(mailOptions);
 
-    res.status(200).json({ success: true, message: 'Email sent successfully!' });
+    // Save to Google Sheets if credentials are provided
+    if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY && process.env.GOOGLE_SHEET_ID) {
+      try {
+        const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+
+        const auth = new google.auth.GoogleAuth({
+          credentials: {
+            client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+            private_key: privateKey,
+          },
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        // Prepare row data: Timestamp -> Columns based on form entries
+        const rowData = [
+          new Date().toLocaleString(),
+        ];
+
+        for (const [key, value] of Object.entries(bodyData)) {
+          if (key.toLowerCase() !== 'subject') {
+            rowData.push(value);
+          }
+        }
+
+        // Append to the sheet
+        await sheets.spreadsheets.values.append({
+          spreadsheetId: process.env.GOOGLE_SHEET_ID,
+          range: 'Sheet1!A:Z', // Modify if your first tab has a different name
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [rowData],
+          },
+        });
+
+        console.log('Successfully appended entry to Google Sheets.');
+        return res.status(200).json({ success: true, message: 'Email sent automatically & saved to Sheets successfully!' });
+      } catch (sheetError) {
+        console.error('Error appending to Google Sheets:', sheetError.message);
+        return res.status(200).json({
+          success: true,
+          message: 'Email sent successfully!',
+          warning: 'Failed to save to Sheets: ' + sheetError.message
+        });
+      }
+    } else {
+      console.log('Google Sheets integration skipped: Missing environment variables.');
+      return res.status(200).json({
+        success: true,
+        message: 'Email sent successfully!',
+        warning: 'Google Sheets skipped (missing credentials in .env)'
+      });
+    }
+
   } catch (error) {
     console.error('Error sending email:', error);
     res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
