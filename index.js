@@ -63,18 +63,44 @@ app.post('/api/contact', async (req, res) => {
     // Remove the honeypot field so it doesn't get emailed to you
     delete bodyData._honeypot;
 
-    // Format the incoming data into a readable email text format
+    // Format the incoming data into a readable email text & html format
     let emailText = 'New submission from your website:\n\n';
+    let emailHtml = `
+      <div style="font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eaeaea; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin: 0 auto;">
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #f0f0f0; padding-bottom: 15px; margin-top: 5px;">New Form Submission</h2>
+        <p style="font-size: 16px; margin-bottom: 25px;">You have received a new message via your website.</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+    `;
+
     for (const [key, value] of Object.entries(bodyData)) {
-      emailText += `${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}\n`;
+      if (key.toLowerCase() === 'subject') continue;
+      const formattedKey = key.charAt(0).toUpperCase() + key.slice(1);
+
+      emailText += `${formattedKey}: ${value}\n`;
+      emailHtml += `
+          <tr>
+            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; font-weight: 600; width: 35%; color: #555; background-color: #fafafa;">${formattedKey}</td>
+            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; color: #222;">${value}</td>
+          </tr>
+      `;
     }
 
+    emailHtml += `
+        </table>
+        <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #f0f0f0; font-size: 13px; color: #888; text-align: center;">
+          Sent automatically from Insectura Private Limited Website
+        </div>
+      </div>
+    `;
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `"Insectura Private Limited" <${process.env.EMAIL_USER}>`,
       to: process.env.EMAIL_TO || process.env.EMAIL_USER, // fallback to sending to yourself
-      subject: `New Website Contact Form Submission`,
+      ...(process.env.EMAIL_BCC && { bcc: process.env.EMAIL_BCC }), // Only add BCC if explicitly provided in properties
+      subject: bodyData.subject || `New Website Contact Form Submission`,
       text: emailText,
-      replyTo: bodyData.email // Allows you to reply directly to the sender if they provided an 'email' field
+      html: emailHtml,
+      replyTo: bodyData.email || bodyData.Email // Allows you to reply directly to the sender if they provided an 'email' field
     };
 
     // Send the email
