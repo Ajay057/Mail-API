@@ -127,6 +127,19 @@ app.get('/api/admin/submissions', auth, async (req, res) => {
   }
 });
 
+// 4. Delete a submission (Protected)
+app.post('/api/admin/submissions/delete/:id', auth, async (req, res) => {
+  try {
+    const result = await Submission.findByIdAndDelete(req.params.id);
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'Submission not found' });
+    }
+    res.json({ success: true, message: 'Submission deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // The POST endpoint called by your static site
 app.post('/api/contact', async (req, res) => {
   try {
