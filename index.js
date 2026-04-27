@@ -3,9 +3,20 @@ const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
+const mongoose = require('mongoose');
+const Submission = require('./models/Submission');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// MongoDB Connection
+if (process.env.MONGODB_URI) {
+  mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Connected to MongoDB'))
+    .catch(err => console.error('Could not connect to MongoDB:', err));
+} else {
+  console.log('MongoDB skip: MONGODB_URI not provided.');
+}
 
 // Middleware
 // Restrict CORS to only allow your static site to make requests
@@ -63,6 +74,21 @@ app.post('/api/contact', async (req, res) => {
 
     // Remove the honeypot field so it doesn't get emailed to you
     delete bodyData._honeypot;
+
+    // --- MONGODB PERSISTENCE ---
+    if (process.env.MONGODB_URI) {
+      try {
+        const newSubmission = new Submission({
+          data: bodyData,
+          ip: req.ip,
+          userAgent: req.headers['user-agent']
+        });
+        await newSubmission.save();
+        console.log('Submission saved to MongoDB');
+      } catch (dbError) {
+        console.error('Error saving to MongoDB:', dbError.message);
+      }
+    }
 
     // Format the incoming data into a readable email text & html format
     let emailText = 'New submission from your website:\n\n';
