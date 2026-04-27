@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
 const mongoose = require('mongoose');
 const Submission = require('./models/Submission');
 
@@ -19,19 +18,15 @@ if (process.env.MONGODB_URI) {
 }
 
 // Middleware
-// Restrict CORS to only allow your static site to make requests
 const allowedOrigins = process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(',') : ['*'];
 app.use(cors({
   origin: function (origin, callback) {
     if (allowedOrigins.includes('*')) return callback(null, true);
-
-    // Normalize both the allowed origins and incoming origin to prevent trailing slash errors
     const isAllowed = allowedOrigins.some(allowed => {
       const cleanAllowed = allowed.trim().toLowerCase().replace(/\/$/, '');
       const cleanOrigin = origin ? origin.trim().toLowerCase().replace(/\/$/, '') : '';
       return cleanAllowed === cleanOrigin;
     });
-
     if (isAllowed) {
       callback(null, true);
     } else {
@@ -39,11 +34,10 @@ app.use(cors({
     }
   }
 }));
-app.use(express.json()); // Parse JSON requests
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded form data
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Create email transporter
-// We are using Gmail in this example, but you can change the service
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -52,7 +46,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Root endpoint just to check if server is running
+// Root endpoint
 app.get('/', (req, res) => {
   res.send('Mail API is up and running!');
 });
@@ -60,19 +54,14 @@ app.get('/', (req, res) => {
 // The POST endpoint called by your static site
 app.post('/api/contact', async (req, res) => {
   try {
-    // Extract any data sent from the frontend
     const bodyData = req.body;
 
-    // --- SECURITY OVERRIDES ---
-
-    // 1. Honeypot check: If a bot fills out our invisible trap field, pretend it succeeded
+    // 1. Honeypot check
     if (bodyData._honeypot) {
       console.log('Blocked spam bot via honeypot field');
-      // Return success so the bot is fooled into moving on
       return res.status(200).json({ success: true, message: 'Email sent successfully!' });
     }
 
-    // Remove the honeypot field so it doesn't get emailed to you
     delete bodyData._honeypot;
 
     // --- MONGODB PERSISTENCE ---
@@ -102,7 +91,6 @@ app.post('/api/contact', async (req, res) => {
     for (const [key, value] of Object.entries(bodyData)) {
       if (key.toLowerCase() === 'subject') continue;
       const formattedKey = key.charAt(0).toUpperCase() + key.slice(1);
-
       emailText += `${formattedKey}: ${value}\n`;
       emailHtml += `
           <tr>
@@ -122,71 +110,18 @@ app.post('/api/contact', async (req, res) => {
 
     const mailOptions = {
       from: `"Insectura Private Limited" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_TO || process.env.EMAIL_USER, // fallback to sending to yourself
-      ...(process.env.EMAIL_BCC && { bcc: process.env.EMAIL_BCC }), // Only add BCC if explicitly provided in properties
+      to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+      ...(process.env.EMAIL_BCC && { bcc: process.env.EMAIL_BCC }),
       subject: bodyData.subject || `New Website Contact Form Submission`,
       text: emailText,
       html: emailHtml,
-      replyTo: bodyData.email || bodyData.Email // Allows you to reply directly to the sender if they provided an 'email' field
+      replyTo: bodyData.email || bodyData.Email
     };
 
     // Send the email
     await transporter.sendMail(mailOptions);
 
-    // Save to Google Sheets if credentials are provided
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY && process.env.GOOGLE_SHEET_ID) {
-      try {
-        const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
-
-        const auth = new google.auth.GoogleAuth({
-          credentials: {
-            client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            private_key: privateKey,
-          },
-          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-        });
-
-        const sheets = google.sheets({ version: 'v4', auth });
-
-        // Prepare row data: Timestamp -> Columns based on form entries
-        const rowData = [
-          new Date().toLocaleString(),
-        ];
-
-        for (const [key, value] of Object.entries(bodyData)) {
-          if (key.toLowerCase() !== 'subject') {
-            rowData.push(value);
-          }
-        }
-
-        // Append to the sheet
-        await sheets.spreadsheets.values.append({
-          spreadsheetId: process.env.GOOGLE_SHEET_ID,
-          range: 'Sheet1!A:Z', // Modify if your first tab has a different name
-          valueInputOption: 'USER_ENTERED',
-          requestBody: {
-            values: [rowData],
-          },
-        });
-
-        console.log('Successfully appended entry to Google Sheets.');
-        return res.status(200).json({ success: true, message: 'Email sent automatically & saved to Sheets successfully!' });
-      } catch (sheetError) {
-        console.error('Error appending to Google Sheets:', sheetError.message);
-        return res.status(200).json({
-          success: true,
-          message: 'Email sent successfully!',
-          warning: 'Failed to save to Sheets: ' + sheetError.message
-        });
-      }
-    } else {
-      console.log('Google Sheets integration skipped: Missing environment variables.');
-      return res.status(200).json({
-        success: true,
-        message: 'Email sent successfully!',
-        warning: 'Google Sheets skipped (missing credentials in .env)'
-      });
-    }
+    res.status(200).json({ success: true, message: 'Email sent successfully!' });
 
   } catch (error) {
     console.error('Error sending email:', error);
@@ -194,7 +129,7 @@ app.post('/api/contact', async (req, res) => {
   }
 });
 
-// Custom error handler to send proper JSON instead of crashing with 500 when CORS or Postman is blocked
+// Custom error handler
 app.use((err, req, res, next) => {
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({ success: false, message: 'Forbidden: Request strictly blocked by CORS policy.' });
