@@ -24,6 +24,9 @@ if (process.env.MONGODB_URI) {
 const allowedOrigins = process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(',') : ['*'];
 app.use(cors({
   origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or Postman)
+    if (!origin) return callback(null, true);
+
     if (allowedOrigins.includes('*')) return callback(null, true);
     const isAllowed = allowedOrigins.some(allowed => {
       const cleanAllowed = allowed.trim().toLowerCase().replace(/\/$/, '');
