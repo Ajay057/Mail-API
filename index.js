@@ -3,7 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 const Submission = require('./models/Submission');
+const User = require('./models/User');
+const auth = require('./middleware/auth');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -49,6 +52,76 @@ const transporter = nodemailer.createTransport({
 // Root endpoint
 app.get('/', (req, res) => {
   res.send('Mail API is up and running!');
+});
+
+// --- ADMIN AUTH ROUTES ---
+
+// 1. One-time setup to create the admin user
+// In production, you should disable this after first use or protect it with a secret key
+app.post('/api/admin/setup', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    // Check if any admin already exists
+    const adminExists = await User.findOne({ role: 'admin' });
+    if (adminExists) {
+      return res.status(400).json({ message: 'Admin already initialized' });
+    }
+
+    const user = new User({ username, password });
+    await user.save();
+    
+    res.status(201).json({ success: true, message: 'Admin user created successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. Admin Login
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Create JWT Token
+    const payload = {
+      user: {
+        id: user.id,
+        role: user.role
+      }
+    };
+
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '24h' },
+      (err, token) => {
+        if (err) throw err;
+        res.json({ success: true, token });
+      }
+    );
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Get all submissions (Protected)
+app.get('/api/admin/submissions', auth, async (req, res) => {
+  try {
+    const submissions = await Submission.find().sort({ createdAt: -1 });
+    res.json({ success: true, count: submissions.length, data: submissions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // The POST endpoint called by your static site
