@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const Submission = require('./models/Submission');
 const User = require('./models/User');
 const auth = require('./middleware/auth');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -57,19 +58,33 @@ app.get('/', (req, res) => {
   res.send('Mail API is up and running!');
 });
 
+// --- SECURITY MIDDLEWARES ---
+
+// Rate limiter for login route to prevent brute-force attacks
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login requests per windowMs
+  message: { success: false, message: 'Too many login attempts, please try again after 15 minutes' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
 // --- ADMIN AUTH ROUTES ---
 
 // 1. One-time setup to create the admin user
 // In production, you should disable this after first use or protect it with a secret key
 app.post('/api/admin/setup', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    
-    // Check if any admin already exists
+    // Check for explicit lock in env or if any admin already exists
     const adminExists = await User.findOne({ role: 'admin' });
-    if (adminExists) {
-      return res.status(400).json({ message: 'Admin already initialized' });
+    if (adminExists || process.env.DISABLE_ADMIN_SETUP === 'true') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Forbidden: Admin setup is locked. Please use the login portal.' 
+      });
     }
+
+    const { username, password } = req.body;
 
     const user = new User({ username, password });
     await user.save();
@@ -81,7 +96,7 @@ app.post('/api/admin/setup', async (req, res) => {
 });
 
 // 2. Admin Login
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     
